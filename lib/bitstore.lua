@@ -56,14 +56,9 @@ end
 -- Loop through our "fake" values
 metabitstore.__ipairs = function(t)
     return function(t, k)
-        if not k then
-            k = 1
-        else
-            k = k + 1
-        end
+        k = not k and 1 or (k + 1)
 
         if k > #t then return nil end
-
         return k, t[k]
     end, t, nil
 end
