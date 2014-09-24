@@ -66,13 +66,20 @@ end
 -- This table is only index based, so pairs() = ipairs()
 metabitstore.__pairs = metabitstore.__ipairs
 
-function bitstore.new(size, bitSize)
+function bitstore.new(size, bitSize, default)
     -- argument checking
+    default = tonumber(default) or 0
     bitSize = math.floor(tonumber(bitSize or 1))
     size = tonumber(size)
     -- this could probably handle arbitrary bitsizes, but it'd be wasteful, and it's not something i want to support
     assert(bitSize > 0 and 16 % bitSize == 0, "bitSize must be 1, 2, 4, 8, 16")
     assert(size, "size must be a number greater than zero")
+
+    -- Format our "default" value
+    local defBlock = 0
+    for i=0, 31, bitSize do
+        defBlock = bit32.bor(defBlock, bit32.lshift(default, i))
+    end
 
     -- Setup our table
     local bs = {
@@ -83,7 +90,7 @@ function bitstore.new(size, bitSize)
 
     -- allocate backstore, i wish there was a better way to do this in lua 5.2
     for i = 1, math.ceil((bs.size * bs.bitSize) / 32) do
-        table.insert(bs.backstore, 0)
+        table.insert(bs.backstore, defBlock)
     end
 
     -- Attach and return the metatable
