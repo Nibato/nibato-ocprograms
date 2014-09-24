@@ -4,8 +4,7 @@ local metabitstore = {}
 
 metabitstore.__index = function(t, k)
 -- We only take numbers for keys
-    k = tonumber(k)
-    if not k then return nil end
+    if type(k) ~= "number" then return nil end
 
     -- Calculate our "real" index
     local index = math.ceil((k * t.bitSize) / 32)
@@ -23,11 +22,13 @@ metabitstore.__index = function(t, k)
 end
 
 metabitstore.__newindex = function(t, k, v)
--- We only take numbers for keys, and values
-    k = tonumber(k)
-    v = tonumber(v)
-    assert(k, "key must be a number")
-    assert(v, "value must be a number")
+    -- Only handle assignment of number indices
+    if type(k) ~= "number" then
+        return rawset(t,k, v)
+    end
+
+    -- Only accept number values
+    assert(type(v) == "number", "a bitstore's number indices only accept number values")
 
     -- Calculate our "real" index
     local index = math.ceil((k * t.bitSize) / 32)
