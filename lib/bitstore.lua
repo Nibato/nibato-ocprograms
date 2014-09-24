@@ -22,9 +22,9 @@ metabitstore.__index = function(t, k)
 end
 
 metabitstore.__newindex = function(t, k, v)
-    -- Only handle assignment of number indices
+-- Only handle assignment of number indices
     if type(k) ~= "number" then
-        return rawset(t,k, v)
+        return rawset(t, k, v)
     end
 
     -- Only accept number values
@@ -54,18 +54,45 @@ metabitstore.__len = function(t)
     return t.size
 end
 
+local function bsinext(t, k)
+    k = not k and 1 or (k + 1)
+
+    if k > #t then return nil end
+    return k, t[k]
+end
+
+local function bsnext(t, k)
+    -- If the key isn't a number
+    if type(k) ~= "number" then
+        -- Loop through all the values in the table, skipping numerical keys
+        local nk, nv
+        repeat
+           nk, nv = next(t, k)
+        until type(nk) ~= "number"
+
+        -- If we found a key, return it
+        if nk then
+            return nk, nv
+        end
+
+        -- We didn't find a key, set it to nil so we can pass it to bsinext
+        k = nil
+    end
+
+    -- If the key is a number, or we didn't find a key, pass off to bsinext
+    return bsinext(t, k)
+end
+
 -- Loop through our "fake" values
 metabitstore.__ipairs = function(t)
-    return function(t, k)
-        k = not k and 1 or (k + 1)
-
-        if k > #t then return nil end
-        return k, t[k]
-    end, t, nil
+    return bsinext, t, nil
 end
 
 -- This table is only index based, so pairs() = ipairs()
-metabitstore.__pairs = metabitstore.__ipairs
+metabitstore.__pairs = function(t)
+    return bsnext, t, nil
+end
+
 
 function bitstore.new(size, bitSize, default)
     -- argument checking
@@ -78,7 +105,7 @@ function bitstore.new(size, bitSize, default)
 
     -- Format our "default" value
     local defBlock = 0
-    for i=0, 31, bitSize do
+    for i = 0, 31, bitSize do
         defBlock = bit32.bor(defBlock, bit32.lshift(default, i))
     end
 
