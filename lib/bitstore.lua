@@ -1,10 +1,11 @@
 --gist:254968e481fe50b2106b
 local bitstore = {}
-local metabitstore = {}
 
-metabitstore.__index = function(t, k)
--- We only take numbers for keys
-    if type(k) ~= "number" then return nil end
+local function bsindex(t, k)
+    -- Only handle numerical indices
+    if type(k) ~= "number" then
+        return rawget(t.table, k)
+    end
 
     -- Calculate our "real" index
     local index = math.ceil((k * t.bitSize) / 32)
@@ -21,10 +22,10 @@ metabitstore.__index = function(t, k)
     return bit32.extract(t.backstore[index], bitPos, t.bitSize)
 end
 
-metabitstore.__newindex = function(t, k, v)
--- Only handle assignment of number indices
+local function bsnewindex(t, k, v)
+    -- Only handle numerical indices
     if type(k) ~= "number" then
-        return rawset(t, k, v)
+        return rawset(t.table, k, v)
     end
 
     -- Only accept number values
@@ -49,50 +50,40 @@ metabitstore.__newindex = function(t, k, v)
     t.backstore[index] = bit32.bor(bit32.band(t.backstore[index], bitmask), v)
 end
 
--- Return our "fake" size
-metabitstore.__len = function(t)
-    return t.size
-end
-
 local function bsinext(t, k)
     k = not k and 1 or (k + 1)
 
-    if k > #t then return nil end
-    return k, t[k]
+    if k > t.size then return nil end
+    return k, t.table[k]
 end
 
 local function bsnext(t, k)
-    -- If the key isn't a number
-    if type(k) ~= "number" then
-        -- Loop through all the values in the table, skipping numerical keys
-        local nk, nv
-        repeat
-           nk, nv = next(t, k)
-        until type(nk) ~= "number"
+    -- Loop through our numbered indices first
+    if k == nil or type(k) == "number" then
+        local nk, nv = bsinext(t, k)
 
-        -- If we found a key, return it
-        if nk then
+        -- Return our key if we found it
+        if nk ~= nil then
             return nk, nv
         end
 
-        -- We didn't find a key, set it to nil so we can pass it to bsinext
+        --Otherwise reset our key to nil and pass it to the default next function
         k = nil
     end
 
-    -- If the key is a number, or we didn't find a key, pass off to bsinext
-    return bsinext(t, k)
+    -- Loop through our string keys
+    return next(t.table, k)
 end
 
 -- Loop through our "fake" values
-metabitstore.__ipairs = function(t)
+local function bsipairs(t)
     return bsinext, t, nil
 end
 
--- This table is only index based, so pairs() = ipairs()
-metabitstore.__pairs = function(t)
+-- Loop through our "fake" numerical values, and then all the other values
+local function bspairs(t)
     return bsnext, t, nil
 end
-
 
 function bitstore.new(size, bitSize, default)
     -- argument checking
@@ -103,26 +94,38 @@ function bitstore.new(size, bitSize, default)
     assert(bitSize > 0 and 16 % bitSize == 0, "bitSize must be 1, 2, 4, 8, 16")
     assert(size, "size must be a number greater than zero")
 
-    -- Format our "default" value
-    local defBlock = 0
-    for i = 0, 31, bitSize do
-        defBlock = bit32.bor(defBlock, bit32.lshift(default, i))
-    end
+    local bs = {}
 
     -- Setup our table
-    local bs = {
+    local bsdata = {
+        table = bs,
         bitSize = bitSize,
         size = size,
         backstore = {}
     }
 
+    -- Setup our metatable
+    local mbs = {
+        __index = function(t, k) return bsindex(bsdata, k) end,
+        __newindex = function(t, k, v) return bsnewindex(bsdata, k, v) end,
+        __len = function(t) return bsdata.size end,
+        __ipairs = function(t) return bsipairs(bsdata) end,
+        __pairs = function(t) return bspairs(bsdata) end
+    }
+
+    -- Format our "default" value
+    local defBlock = 0
+    for i = 0, 31, bsdata.bitSize do
+        defBlock = bit32.bor(defBlock, bit32.lshift(default, i))
+    end
+
     -- allocate backstore, i wish there was a better way to do this in lua 5.2
-    for i = 1, math.ceil((bs.size * bs.bitSize) / 32) do
-        table.insert(bs.backstore, defBlock)
+    for i = 1, math.ceil((bsdata.size * bsdata.bitSize) / 32) do
+        table.insert(bsdata.backstore, defBlock)
     end
 
     -- Attach and return the metatable
-    return setmetatable(bs, metabitstore)
+    return setmetatable(bs, mbs)
 end
 
 return bitstore
