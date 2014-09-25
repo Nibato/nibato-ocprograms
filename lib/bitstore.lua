@@ -41,7 +41,7 @@ local function bsnewindex(t, k, v)
     local bitPos = (((k - 1) * t.bitSize) % 32)
 
     -- Take our input value, make it fit in t.bitSize bits, and shift it to fit at it's "fake" index
-    v = bit32.lshift((math.floor(v) % t.bitSize ^ 2), bitPos)
+    v = bit32.lshift(math.floor(v) % (2 ^ t.bitSize), bitPos)
 
     -- Create a bitmask to erase the previous values at the "fake" index
     local bitmask = bit32.bor(bit32.lshift(0xFFFFFFFF, t.bitSize + bitPos), bit32.rshift(0xFFFFFFFF, 32 - bitPos))
@@ -115,8 +115,9 @@ function bitstore.new(size, bitSize, default)
 
     -- Format our "default" value
     local defBlock = 0
+    local max = 2 ^ bitSize
     for i = 0, 31, bsdata.bitSize do
-        defBlock = bit32.bor(defBlock, bit32.lshift(default, i))
+        defBlock = bit32.bor(defBlock, bit32.lshift(default % max, i))
     end
 
     -- allocate backstore, i wish there was a better way to do this in lua 5.2
