@@ -3,7 +3,6 @@
 -- Imports and dependencies
 -----------------------------------------------------------------------------
 local robot = require("robot")
-local component = require("component")
 local sides = require("sides")
 
 -----------------------------------------------------------------------------
@@ -347,8 +346,8 @@ end
 -- @param y2 The Y of the second point
 -- @param z2 The Z of the second point
 -- @return The distance between the two points
-function distance(x1, y1, z1, x2, y2, z2)
-    return math.sqrt(distancesq(x1, y1, z1, x2, y2, z2))
+function nibnav.distance(x1, y1, z1, x2, y2, z2)
+    return math.sqrt(nibnav.distancesq(x1, y1, z1, x2, y2, z2))
 end
 
 --- Gets the squared (or manhattan) distance between two 3 dimensional points
@@ -359,7 +358,7 @@ end
 -- @param y2 The Y of the second point
 -- @param z2 The Z of the second point
 -- @return The squared distance between the two points
-function distancesq(x1, y1, z1, x2, y2, z2)
+function nibnav.distancesq(x1, y1, z1, x2, y2, z2)
     return math.abs(x1 - x2) + math.abs(y1 - y2) + math.abs(z1 - z2)
 end
 
@@ -368,7 +367,7 @@ end
 -- @param y The origin Y to get the neighbors of
 -- @param z The origin Z to get the neighbors of
 -- @return A list of x, y, z, and sides constant for each neighbor describing its direction in relation to the origin
-function getBlockNeighbors(x, y, z)
+function nibnav.getBlockNeighbors(x, y, z)
     return {
         { x - 1, y, z, sides.negx },
         { x + 1, y, z, sides.posx },
@@ -405,18 +404,18 @@ end
 -- @return an ordered array of tables containing { x, y, z, data } for each node that needs to be visited
 -- to get to the the goal
 
-function pathfind(sX, sY, sZ, gX, gY, gZ, getCost, getNeighbors, sData)
+function nibnav.pathfind(sX, sY, sZ, gX, gY, gZ, getCost, getNeighbors, sData)
     sX, sY, sZ = tonumber(sX), tonumber(sY), tonumber(sZ)
     gX, gY, gZ = tonumber(gX), tonumber(gY), tonumber(gZ)
     assert(sX and sY and sZ and gX and gY and gZ, "sX, sY, sZ, eX, eY, and eZ must be numbers")
     assert(type(getCost) == "function", "getWeight must be a function")
-    getNeighbors = getNeighbors or getBlockNeighbors
+    getNeighbors = getNeighbors or nibnav.getBlockNeighbors
     assert(type(getNeighbors) == "function", "getNeighbors must be a function")
 
     -- ["x,y,z"] = x, y, z, gScore, fScore, userData (can be anything, for use with callbacks)
     local sKey = string.format("%d,%d,%d", sX, sY, sZ)
     local open = {
-        [sKey] = { sX, sY, sZ, 0, distancesq(sX, sY, sZ, gX, gY, gZ), sData }
+        [sKey] = { sX, sY, sZ, 0, nibnav.distancesq(sX, sY, sZ, gX, gY, gZ), sData }
     }
     local closed = {}
     local visited = {}
@@ -474,7 +473,7 @@ function pathfind(sX, sY, sZ, gX, gY, gZ, getCost, getNeighbors, sData)
                 -- add it to the open set or update its gScore if it's already there
                 if not closed[nKey] and (not open[nKey] or gScore < open[nKey][4]) then
                     visited[nKey] = { x, y, z, data, cKey }
-                    open[nKey] = { x, y, z, gScore, gScore + distancesq(x, y, z, gX, gY, gZ), data }
+                    open[nKey] = { x, y, z, gScore, gScore + nibnav.distancesq(x, y, z, gX, gY, gZ), data }
                 end
             end
         end
