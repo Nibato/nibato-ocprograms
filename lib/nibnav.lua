@@ -418,7 +418,9 @@ function nibnav.pathfind(sX, sY, sZ, gX, gY, gZ, getCost, getNeighbors, sData)
         [sKey] = { sX, sY, sZ, 0, nibnav.distancesq(sX, sY, sZ, gX, gY, gZ), sData }
     }
     local closed = {}
-    local visited = {}
+    local visited = {
+        [sKey] = { sX, sY, sZ, sData, nil }
+    }
 
     while true do
         local cKey, current
@@ -450,8 +452,6 @@ function nibnav.pathfind(sX, sY, sZ, gX, gY, gZ, getCost, getNeighbors, sData)
                 x, y, z, data, key = table.unpack(visited[key])
                 table.insert(path, 1, { x, y, z, data })
             until not visited[key]
-
-            table.insert(path, 1, { sX, sY, sZ })
 
             return path
         end
