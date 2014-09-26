@@ -32,9 +32,9 @@ local navMap
 -- These positons will always be considered walls when pathfinding
 local navBlacklist =
 {
-    { -1, 0, 0 },
-    { 1, 0, 0 },
-    { 0, 0, 1 }
+    { -1, 0 },
+    { 1, 0 },
+    { 0, 1 }
 }
 
 -- To be used with try(). returns true, nil, or nil, error
@@ -72,7 +72,7 @@ local function genMap(centerSize, branchCount, branchSpacing)
     local size = 1 + centerSize + branchLength
 
     -- Allocate a 2-bit bitstore, and default all values to 0, which represent walls
-    local map = bitstore.new(size * size, 2, 0)
+    local map = bitstore.new(size * size, 1, 0)
 
     -- Setup our access functions
     function map.rawget(x, y)
@@ -83,7 +83,7 @@ local function genMap(centerSize, branchCount, branchSpacing)
         if x > size then return end
         map[((y - 1) * size) + x] = v
     end
-    
+
 
     function map.get(x, y)
         -- Figure out which map quadrant we're in
@@ -127,11 +127,11 @@ local function genMap(centerSize, branchCount, branchSpacing)
     local start = 1 + centerSize
     local max = size
     local nextBranch = (start + branchSpacing) - centerSize
-    for y = start+1, max do
+    for y = start + 1, max do
         -- See if we dig a branch at this Y
         if y >= nextBranch then
             -- Dig out branch
-            for x = start+1, max do map.rawset(x, y, 1) end
+            for x = start + 1, max do map.rawset(x, y, 1) end
 
             -- Create waypoints
             table.insert(map.waypoints, { start - 1, y - 1 })
@@ -145,7 +145,7 @@ local function genMap(centerSize, branchCount, branchSpacing)
                 end
 
                 -- Dig out the next new shaft in reverse
-                for x2 = max, start+1, -1 do
+                for x2 = max, start + 1, -1 do
                     map.rawset(x2, yNext, 1)
                 end
 
@@ -163,7 +163,7 @@ local function genMap(centerSize, branchCount, branchSpacing)
         end
 
         -- Dig main shaft
-        map.rawset(start, y, 2)
+        map.rawset(start, y, 1)
 
         -- No more branches, quit digging the main shaft
         if not nextBranch then
@@ -487,18 +487,15 @@ local function detectOre(side)
     side = side or sides.front
     local detect = component.robot.detect
     local compare = component.robot.compare
-    local swing = component.robot.compare
+    local swing = component.robot.swing
 
-    local ok, err = detect(side)
+    local ok, type = detect(side)
     if not ok then return nil end
 
     -- Keep punching any entites in our way
-    while err == "entity" do
-        if not swing(side) then
-            return nil
-        end
-
-        ok, err = detect(side)
+    while type == "entity" do
+        swing(side)
+        ok, type = detect(side)
 
         if not ok then return nil end
     end
@@ -519,47 +516,47 @@ local function detectOreUp() return detectOre(sides.up) end
 local function detectOreDown() return detectOre(sides.down) end
 
 local function digMove(move)
+
     return protected(function()
+        local detect
+        local swing
+
         if move == nav.up then
-            while robot.detectUp() do
-                try(robot.swingUp)
-            end
+            detect = robot.detectUp
+            swing = robot.swingUp
         elseif move == nav.down then
-            while robot.detectDown() do
-                try(robot.swingDown)
-            end
-        elseif move == nav.back then
-            -- Special handling for backwards movement
-            while true do
-                local ok, err = move()
-
-                -- If we had no issues moving, we're done
-                if ok then
-                    return true
-                else
-                    -- If it's something that punching won't fix, we're done :(
-                    if err == "impossible move" or err == "not enough energy" then
-                        return nil, err
-                    end
-
-                    -- Turn around and start punching anything in our way
-                    try(nav.turnAround)
-                    while robot.detect() do
-                        try(robot.swing)
-                    end
-
-                    -- turn back around to face our original position
-                    try(nav.turnAround)
-                end
-            end
-        else
-            while robot.detect() do
-                try(robot.swing)
-            end
+            detect = robot.detectDown
+            swing = robot.swingDown
+        elseif move == nav.forward then
+            detect = robot.detect
+            swing = robot.swing
+        elseif move ~= nav.back then
+            error("invalid movement function", 2)
         end
 
-        try(move)
-        return true
+        while true do
+            if detect then
+                while detect() do swing() end
+            end
+
+            local ok, err = move()
+
+            -- If we had no issues moving, we're done
+            if ok then
+                return true
+                -- If it's something that punching won't fix, we failed and we're done :(
+            elseif err == "impossible move" or err == "not enough energy" then
+                return nil, err
+            end
+
+            -- Special case for backing up, we turn around to punch what was behind us
+            if move == nav.back then
+                try(nav.turnAround)
+                while robot.detect() do robot.swing() end
+                -- turn back around to face our original position
+                try(nav.turnAround)
+            end
+        end
     end)
 end
 
@@ -570,7 +567,6 @@ local function checkOre(ignoreFront, ignoreUp, ignoreDown)
             if i ~= 1 or not ignoreFront then
                 -- Dig any detected ore
                 if detectOre() then
-                    --try(robot.swing)
                     try(digMove, nav.forward)
                     try(checkOre)
                     try(digMove, nav.back)
@@ -581,7 +577,6 @@ local function checkOre(ignoreFront, ignoreUp, ignoreDown)
 
         -- check up
         if not ignoreUp and detectOreUp() then
-            --try(robot.swingUp)
             try(digMove, nav.up)
             try(checkOre)
             try(digMove, nav.down)
@@ -589,7 +584,6 @@ local function checkOre(ignoreFront, ignoreUp, ignoreDown)
 
         -- check down
         if not ignoreDown and detectOreDown() then
-            --try(robot.swingDown)
             try(digMove, nav.down)
             try(checkOre)
             try(digMove, nav.up)
@@ -625,26 +619,19 @@ local function initResupply()
 end
 
 local function getMoveCost(x, y, z, dir, _, _, _, oldDir)
-    if y ~= 0 then return nil end
+    -- We work on a 2d plane, so reject any y but 0
+    -- Also reject any walls for pathing consideration
+    if y ~= 0 or navMap.get(x, z) ~= 1 then return nil end
 
-    local weight = navMap.get(x, z) or 0
-    if weight == 0 then return nil end
-    
+    -- Look for any extra walls in the blacklist
     for _, v in pairs(navBlacklist) do
-        if x == v[1] and y == v[2] and z == v[3] then
+        if x == v[1] and z == v[2] then
             return nil
         end
     end
 
-    -- Add extra weight for the "main" shaft
-    local cost = 1.5 * (weight == 1 and 1 or navMap.branchLength)
-
-    -- Add penalty for turning
-    if dir ~= oldDir then
-        cost = cost + 0.25
-    end
-    
-    return cost
+    -- 1.5 for moving with a 0.25 penalty for turning
+    return 1.5 + (dir ~= oldDir and 0.25 or 0)
 end
 
 local function moveTo(x, z)
@@ -734,7 +721,7 @@ local function main()
                 local gX, gZ, noOre = table.unpack(navMap.waypoints[wp])
 
                 -- Make sure we're at y = 0 if we aren't digging ore
-                if noOre then try(nav.moveY, 0) end
+                if noOre then try(nav.moveY, 0, digMove) end
 
                 gX, gZ = rotateXY(gX, gZ, quad)
                 local sX, _, sZ = nav.getPosition()
@@ -744,8 +731,6 @@ local function main()
                 if not paths then
                     error("unable to create path")
                 end
-
-
 
                 for i = 2, #paths do
                     -- Check if we need to resupply
@@ -760,7 +745,7 @@ local function main()
 
                     -- Check for ore, ignore the front since we dig it out regardless
                     -- Don't check for ore in the center room though
-                    if not noOre and math.abs(x) > navMap.centerSize or math.abs(z) > navMap.centerSize then
+                    if not noOre and (math.abs(x) > navMap.centerSize or math.abs(z) > navMap.centerSize) then
                         local _, y, _ = nav.getPosition()
 
                         -- Do an up/down zig-zag alternation when mining
@@ -783,18 +768,18 @@ local function main()
                     end
                 end
 
-                try(nav.moveY, 0)
+                try(nav.moveY, 0, digMove)
             end
         end
     end)
 
+    if not ok then
+        print("FATAL ERROR: " .. (err or "unknown"))
+    end
+
     doResupply(true)
 
-    if not ok then
-        print("ERROR: " .. err or "unknown")
-    else
-        print("done")
-    end
+    print("done")
 
     if component.isAvailable("chunkloader") then
         print("Disabling chunkloader")
