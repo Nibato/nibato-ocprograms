@@ -14,20 +14,12 @@ local inv = component.inventory_controller
 local chunkloader = component.chunkloader
 
 -- settings
-local lowToolCharge = 0.20
-local lowEnergy = 0.30
-local lowItemSpace = 3
-
-local torchSpacing = 8
-
-
-local lastBlackListSlot = 0
-
-
--- locals, dont edit these
-local torchSlot
-local lastTorchSlot
-local navMap
+local lowToolCharge = 0.20 -- what percentage of tool power to trigger resupply
+local lowEnergy = 0.30 -- what percentage of power to trigger resupply
+local lowItemSpace = 3 -- resupply when we have less than or equal to this many free item slots
+local torchSpacing = 8 -- how far apart we attempt to place torches
+local swingRetries = 10 -- how many times we attempt to retry a failed swing (punching entities, digging blocks, etc)
+local swingRetryDelay = 0.2 -- How many seconds to wait inbetween retries on swing failure
 
 -- These positons will always be considered walls when pathfinding
 local navBlacklist =
@@ -36,6 +28,12 @@ local navBlacklist =
     { 1, 0 },
     { 0, 1 }
 }
+
+-- references, dont edit these
+local lastBlackListSlot = 0
+local torchSlot
+local lastTorchSlot
+local navMap
 
 -- To be used with try(). returns true, nil, or nil, error
 local function protected(func, ...)
@@ -512,7 +510,6 @@ local function detectOre(side)
 end
 
 local function detectOreUp() return detectOre(sides.up) end
-
 local function detectOreDown() return detectOre(sides.down) end
 
 local function digMove(move)
@@ -536,7 +533,19 @@ local function digMove(move)
 
         while true do
             if detect then
-                while detect() do swing() end
+                local failCount = 0
+                while detect() do
+                    if not swing() then
+                        failCount = failCount + 1
+
+                        if failCount > swingRetries then
+                            return nil, "failed swing"
+                        end
+
+                        -- Slight delay before retrying
+                        os.sleep(swingRetryDelay)
+                    end
+                end
             end
 
             local ok, err = move()
