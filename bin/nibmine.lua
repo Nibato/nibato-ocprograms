@@ -583,7 +583,7 @@ local function checkOre(ignoreFront, ignoreUp, ignoreDown)
         end
 
         -- check up
-        if not ignoreUp and detectOreUp(sides.up) then
+        if not ignoreUp and detectOre(sides.up) then
             if digMove(nav.up) then
                 try(checkOre)
                 try(digMove, nav.down)
@@ -591,7 +591,7 @@ local function checkOre(ignoreFront, ignoreUp, ignoreDown)
         end
 
         -- check down
-        if not ignoreDown and detectOreDown(sides.down) then
+        if not ignoreDown and detectOre(sides.down) then
             if digMove(nav.down) then
                 try(checkOre)
                 try(digMove, nav.up)
