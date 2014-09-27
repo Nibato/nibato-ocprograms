@@ -18,7 +18,7 @@ local lowToolCharge = 0.20 -- what percentage of tool power to trigger resupply
 local lowEnergy = 0.30 -- what percentage of power to trigger resupply
 local lowItemSpace = 3 -- resupply when we have less than or equal to this many free item slots
 local torchSpacing = 8 -- how far apart we attempt to place torches
-local swingRetries = 10 -- how many times we attempt to retry a failed swing (punching entities, digging blocks, etc)
+local swingRetries = 20 -- how many times we attempt to retry a failed swing (punching entities, digging blocks, etc)
 
 -- These positons will always be considered walls when pathfinding
 local navBlacklist =
@@ -516,8 +516,7 @@ local function digMove(move)
                     if not swing() then
                         failCount = failCount + 1
 
-                        print("failed swing: ", failCount)
-                        if failCount >= swingRetries then
+                        if failCount > swingRetries then
                             return nil, "failed swing"
                         end
                     end
@@ -572,8 +571,6 @@ end
 
 local function checkOre(ignoreFront, ignoreUp, ignoreDown)
     return protected(function()
-        print("checkore")
-
     -- check sides
         for i = 1, 4 do
             if i ~= 1 or not ignoreFront then
