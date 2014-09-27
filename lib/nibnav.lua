@@ -109,10 +109,15 @@ end
 --- Attempts to catch and return any errors thrown inside of the given function
 -- @param body the function to run and catch errors from
 -- @param ... arguments to pass to the function
--- @return true if no errors, otherwise returns nil, and the error message
+-- @return returns the first two results of the function if no errors, otherwise nil, error
 local function protected(body, ...)
-    local ok, err = pcall(body, ...)
-    return ok or nil, err
+    local ok, arg1, arg2 = pcall(body, ...)
+
+    if ok then
+        return arg1, arg2
+    else
+        return nil, arg1
+    end
 end
 
 -----------------------------------------------------------------------------
