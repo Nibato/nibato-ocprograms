@@ -480,38 +480,6 @@ local function placeTorch()
     return robot.placeDown()
 end
 
-
-local function detectOre(side)
-    side = side or sides.front
-    local detect = component.robot.detect
-    local compare = component.robot.compare
-    local swing = component.robot.swing
-
-    local ok, type = detect(side)
-    if not ok then return nil end
-
-    -- Keep punching any entites in our way
-    while type == "entity" do
-        swing(side)
-        ok, type = detect(side)
-
-        if not ok then return nil end
-    end
-
-    -- See if this block is on the black list
-    for i = 1, lastBlackListSlot do
-        robot.select(i)
-        if compare(side, i) then
-            return nil
-        end
-    end
-
-    return true
-end
-
-local function detectOreUp() return detectOre(sides.up) end
-local function detectOreDown() return detectOre(sides.down) end
-
 local function digMove(move)
 
     return protected(function()
@@ -569,6 +537,34 @@ local function digMove(move)
     end)
 end
 
+local function detectOre(side)
+    side = side or sides.front
+    local detect = component.robot.detect
+    local compare = component.robot.compare
+    local swing = component.robot.swing
+
+    local ok, type = detect(side)
+    if not ok then return nil end
+
+    -- Keep punching any entites in our way
+    while type == "entity" do
+        swing(side)
+        ok, type = detect(side)
+
+        if not ok then return nil end
+    end
+
+    -- See if this block is on the black list
+    for i = 1, lastBlackListSlot do
+        robot.select(i)
+        if compare(side, i) then
+            return nil
+        end
+    end
+
+    return true
+end
+
 local function checkOre(ignoreFront, ignoreUp, ignoreDown)
     return protected(function()
     -- check sides
@@ -576,26 +572,30 @@ local function checkOre(ignoreFront, ignoreUp, ignoreDown)
             if i ~= 1 or not ignoreFront then
                 -- Dig any detected ore
                 if detectOre() then
-                    try(digMove, nav.forward)
-                    try(checkOre)
-                    try(digMove, nav.back)
+                    -- Graceful failure if we can't dig the ore out
+                    if digMove(nav.forward) then
+                        try(checkOre)
+                        try(digMove, nav.back)
+                    end
                 end
             end
             try(nav.turnLeft)
         end
 
         -- check up
-        if not ignoreUp and detectOreUp() then
-            try(digMove, nav.up)
-            try(checkOre)
-            try(digMove, nav.down)
+        if not ignoreUp and detectOreUp(sides.up) then
+            if digMove(nav.up) then
+                try(checkOre)
+                try(digMove, nav.down)
+            end
         end
 
         -- check down
-        if not ignoreDown and detectOreDown() then
-            try(digMove, nav.down)
-            try(checkOre)
-            try(digMove, nav.up)
+        if not ignoreDown and detectOreDown(sides.down) then
+            if digMove(nav.down) then
+                try(checkOre)
+                try(digMove, nav.up)
+            end
         end
 
         return true
