@@ -698,7 +698,7 @@ end
 local function main()
     -- Start going through our branches
     local ok, err = protected(function()
-        navMap = genMap(2, 3, 3)
+        navMap = genMap(2, 10, 3)
 
         if component.isAvailable("chunkloader") then
             print("Enabling chunkloader")
