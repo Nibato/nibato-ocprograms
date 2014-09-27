@@ -19,7 +19,6 @@ local lowEnergy = 0.30 -- what percentage of power to trigger resupply
 local lowItemSpace = 3 -- resupply when we have less than or equal to this many free item slots
 local torchSpacing = 8 -- how far apart we attempt to place torches
 local swingRetries = 10 -- how many times we attempt to retry a failed swing (punching entities, digging blocks, etc)
-local swingRetryDelay = 0.2 -- How many seconds to wait inbetween retries on swing failure
 
 -- These positons will always be considered walls when pathfinding
 local navBlacklist =
@@ -35,11 +34,15 @@ local torchSlot
 local lastTorchSlot
 local navMap
 
--- To be used with try(). returns true, nil, or nil, error
+-- To be used with try(). if no errors are thrown, returns the first two returned results, otherwise returns nil, error
 local function protected(func, ...)
-    local ok, err = pcall(func, ...)
+    local ok, arg1, arg2 = pcall(func, ...)
 
-    return ok or nil, err
+    if ok then
+        return arg1, arg2
+    else
+        return nil, arg1
+    end
 end
 
 -- Runs func, if it returns false, throw it's second argument as an error
@@ -49,8 +52,6 @@ local function try(func, ...)
     if not ok then
         error(err, 0)
     end
-
-    return ok, err
 end
 
 -- Rotates an x,y pair by 90 degrees count amount of times
@@ -211,10 +212,11 @@ local function chargeTool()
     return protected(function()
         local durability, _, maxDurability = robot.durability()
 
-        assert(durability, "invalid tool")
+        if not durability then return nil, "invalid tool" end
         if durability >= (maxDurability - 1) then return true end
 
-        assert(try(inv.getInventorySize, sides.front) == 2, "wrong inventory size for batbox")
+        if inv.getInventorySize(sides.front) ~= 2 then return nil, "wrong inventory size for batbox" end
+
         try(robot.select, torchSlot)
         try(inv.equip)
 
@@ -223,11 +225,14 @@ local function chargeTool()
         local tool
         repeat
             os.sleep(1)
-            tool = try(inv.getStackInSlot, sides.front, 1)
+            tool = inv.getStackInSlot(sides.front, 1)
+            if not tool then return nil, "tool disappeared from batbox" end
         until tool.charge >= tool.maxCharge
 
         try(inv.suckFromSlot, sides.front, 1)
         try(inv.equip)
+
+        return true
     end)
 end
 
@@ -492,28 +497,34 @@ local function digMove(move)
         elseif move == nav.down then
             detect = robot.detectDown
             swing = robot.swingDown
-        elseif move == nav.forward then
+        elseif move == nav.forward or move == nav.back then
             detect = robot.detect
             swing = robot.swing
-        elseif move ~= nav.back then
+        else
             error("invalid movement function", 2)
         end
 
+        local count = 0
         while true do
-            if detect then
+            if move ~= nav.back or count > 0 then
+
+                -- Special case for backing up, we turn around to punch what was behind us
+                if move == nav.back then try(nav.turnAround) end
+
                 local failCount = 0
                 while detect() do
                     if not swing() then
                         failCount = failCount + 1
 
-                        if failCount > swingRetries then
+                        print("failed swing: ", failCount)
+                        if failCount >= swingRetries then
                             return nil, "failed swing"
                         end
-
-                        -- Slight delay before retrying
-                        os.sleep(swingRetryDelay)
                     end
                 end
+
+                -- turn back around to face our original position
+                if move == nav.back then try(nav.turnAround) end
             end
 
             local ok, err = move()
@@ -526,13 +537,7 @@ local function digMove(move)
                 return nil, err
             end
 
-            -- Special case for backing up, we turn around to punch what was behind us
-            if move == nav.back then
-                try(nav.turnAround)
-                while robot.detect() do robot.swing() end
-                -- turn back around to face our original position
-                try(nav.turnAround)
-            end
+            count = count + 1
         end
     end)
 end
@@ -567,6 +572,8 @@ end
 
 local function checkOre(ignoreFront, ignoreUp, ignoreDown)
     return protected(function()
+        print("checkore")
+
     -- check sides
         for i = 1, 4 do
             if i ~= 1 or not ignoreFront then
@@ -574,6 +581,7 @@ local function checkOre(ignoreFront, ignoreUp, ignoreDown)
                 if detectOre() then
                     -- Graceful failure if we can't dig the ore out
                     if digMove(nav.forward) then
+                        print("returned true anyway")
                         try(checkOre)
                         try(digMove, nav.back)
                     end
@@ -664,7 +672,7 @@ local function moveTo(x, z)
     end)
 end
 
-local function doResupply(noResupply)
+local function doResupply(noGetItems)
     return protected(function()
         local x, y, z = nav.getPosition()
         local facing = nav.getFacing()
@@ -682,7 +690,7 @@ local function doResupply(noResupply)
         print("Unloading items")
         try(dropItems, false, true)
 
-        if not noResupply then
+        if not noGetItems then
             print("Resupplying torches")
             try(getTorches)
             consolidateItems()
@@ -786,9 +794,11 @@ local function main()
         print("FATAL ERROR: " .. (err or "unknown"))
     end
 
+    nav.moveY(0, digMove)
+    moveTo(0,0)
     doResupply(true)
 
-    print("done")
+    print("Done")
 
     if component.isAvailable("chunkloader") then
         print("Disabling chunkloader")
