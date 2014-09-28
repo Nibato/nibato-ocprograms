@@ -578,7 +578,6 @@ local function checkOre(ignoreFront, ignoreUp, ignoreDown)
                 if detectOre() then
                     -- Graceful failure if we can't dig the ore out
                     if digMove(nav.forward) then
-                        print("returned true anyway")
                         try(checkOre)
                         try(digMove, nav.back)
                     end
