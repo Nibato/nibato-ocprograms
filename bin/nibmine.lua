@@ -784,6 +784,8 @@ local function main()
                 try(nav.moveY, 0, digMove)
             end
         end
+        
+        return true
     end)
 
     if not ok then
