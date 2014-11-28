@@ -15,44 +15,70 @@ local nibnav = {}
 -----------------------------------------------------------------------------
 
 --- Lookup table for calculating turns. Also, I couldn't resist the name
--- Negative values are left turns, positive values are right turns
-nibnav.turnTable = {
-    [sides.north] = {
-        [sides.south] = 2,
-        [sides.east] = 1,
-        [sides.west] = -1
-    },
-    [sides.south] = {
-        [sides.north] = 2,
-        [sides.east] = -1,
-        [sides.west] = 1
-    },
-    [sides.east] = {
-        [sides.north] = -1,
-        [sides.south] = 1,
-        [sides.west] = 2
-    },
-    [sides.west] = {
-        [sides.north] = 1,
-        [sides.south] = -1,
-        [sides.east] = 2
+
+nibnav.sideLookup = {
+    -- Negative values are left turns, positive values are right turns
+    turn = {
+        [sides.north] = {
+            [sides.south] = 2,
+            [sides.east] = 1,
+            [sides.west] = -1
+        },
+        [sides.south] = {
+            [sides.north] = 2,
+            [sides.east] = -1,
+            [sides.west] = 1
+        },
+        [sides.east] = {
+            [sides.north] = -1,
+            [sides.south] = 1,
+            [sides.west] = 2
+        },
+        [sides.west] = {
+            [sides.north] = 1,
+            [sides.south] = -1,
+            [sides.east] = 2
+        }
     },
 
-    -- Which direction will we face after turning left from [key]
-    turnLeft = {
-        [sides.north] = sides.west,
-        [sides.south] = sides.east,
-        [sides.east] = sides.north,
-        [sides.west] = sides.south
+    -- Translation table for turning a local direction into a cardinal/global direction
+    translation = {
+        [sides.north] = {
+            [sides.front] = sides.north,
+            [sides.back] = sides.south,
+            [sides.left] = sides.west,
+            [sides.right] = sides.east
+        },
+        [sides.south] = {
+            [sides.front] = sides.south,
+            [sides.back] = sides.north,
+            [sides.left] = sides.east,
+            [sides.right] = sides.west
+        },
+        [sides.east] = {
+            [sides.front] = sides.east,
+            [sides.back] = sides.west,
+            [sides.left] = sides.north,
+            [sides.right] = sides.south
+        },
+        [sides.west] = {
+            [sides.front] = sides.west,
+            [sides.back] = sides.east,
+            [sides.left] = sides.south,
+            [sides.right] = sides.north
+        }
     },
 
-    -- Which direction will we face after turning right from [key]
-    turnRight = {
-        [sides.north] = sides.east,
-        [sides.south] = sides.west,
-        [sides.east] = sides.south,
-        [sides.west] = sides.north
-    }
+    offsets = {
+        [sides.down] = { 0, -1, 0 },
+        [sides.up] = { 0, 1, 0 },
+        [sides.north] = { 0, 0, -1 },
+        [sides.south] = { 0, 0, 1 },
+        [sides.west] = { -1, 0, 0 },
+        [sides.east] = { 1, 0, 0 }
+    },
+
+    valid = { sides.down, sides.up, sides.north, sides.south, sides.west, sides.east }
 }
 
 -----------------------------------------------------------------------------
@@ -123,7 +149,7 @@ end
 -- Use this and avoid robot.turnLeft() to keep track the robot's facing
 -- @return true on success, or nil, and an optional error message
 function nibnav.turnLeft()
-    local newFacing = nibnav.turnTable.turnLeft[nibnav.getFacing()]
+    local newFacing = nibnav.sideLookup.translation[nibnav.getFacing()][sides.left]
     return ifAction(robot.turnLeft, function()
         _position.facing = newFacing
     end)
@@ -133,7 +159,7 @@ end
 -- Use this and avoid robot.turnRight() to keep track the robot's facing
 -- @return true on success, or nil, and an optional error message
 function nibnav.turnRight()
-    local newFacing = nibnav.turnTable.turnRight[nibnav.getFacing()]
+    local newFacing = nibnav.sideLookup.translation[nibnav.getFacing()][sides.right]
     return ifAction(robot.turnRight, function()
         _position.facing = newFacing
     end)
@@ -154,6 +180,24 @@ end
 --- Gets which way the robot is facing relative to it's tracking data
 -- @returns A sides constant representing which way the robot is facing
 function nibnav.getFacing() return _position.facing end
+
+--- Returns which way a particular side of the robot is facing
+-- For example, if the robot is facing north, passing sides.left would return sides.west
+-- @param side The side of the robot
+-- @returns The facing of the robot's side
+function nibnav.getFacingFromSide(side)
+    -- Don't translate up/down
+    if side == sides.up or side == sides.down then
+        return side
+    end
+
+    assert(side, "Invalid side")
+    local facing = nibnav.getFacing()
+    local lookup =  nibnav.sideLookup.translation[facing][side]
+    assert(lookup, "Invalid side")
+
+    return lookup
+end
 
 --- Gets the relative x, y, z position of the robot according to it's tracking data
 -- @return 3 numbers representing the x, y, and z of the robot
@@ -216,7 +260,7 @@ function nibnav.faceSide(side)
         return true
     end
 
-    local turn = nibnav.turnTable[oldSide] and nibnav.turnTable[oldSide][side]
+    local turn = nibnav.sideLookup.turn[oldSide] and nibnav.sideLookup.turn[oldSide][side]
     assert(turn, "Unable to face side: " .. side or "nil")
 
     return turn == 2 and nibnav.turnAround() or turn == -1 and nibnav.turnLeft() or turn == 1 and nibnav.turnRight()
@@ -247,7 +291,7 @@ function nibnav.move(direction, distance, wrapper)
         elseif direction == sides.down then
             moveFunc = nibnav.down
         else
-            assert(nibnav.turnTable[direction], "invalid direction")
+            assert(nibnav.sideLookup.turn[direction], "invalid direction")
             tryAction(nibnav.faceSide, direction)
             moveFunc = nibnav.forward
         end
@@ -333,7 +377,7 @@ end
 function nibnav.setPosition(x, y, z, facing)
     x, y, z, facing = tonumber(x), tonumber(y), tonumber(z), tonumber(facing)
     assert(x and y and z, "Invalid x,y,z")
-    assert(nibnav.turnTable[facing], "Invalid facing")
+    assert(nibnav.sideLookup.turn[facing], "Invalid facing")
     _position.x, _position.y, _position.z = x, y, z
     _position.facing = facing
 end
@@ -377,8 +421,6 @@ function nibnav.getBlockNeighbors(x, y, z)
         { x, y + 1, z, sides.posy }
     }
 end
-
-
 
 --- Uses the A* search algorithm to pathfind from a starting point to a goal
 -- @param sX The starting point's X
@@ -494,8 +536,8 @@ local function getCost(x, y, z, facing, _, _, _, prevFacing)
     local cost = moveCost
 
     -- If we have to turn, then add the turn cost
-    if facing ~= prevFacing and nibnav.turnTable[prevFacing] and nibnav.turnTable[prevFacing][facing] then
-        cost = cost + math.abs(nibnav.turnTable[prevFacing][facing])
+    if facing ~= prevFacing and nibnav.sideLookup.turn[prevFacing] and nibnav.sideLookup.turn[prevFacing][facing] then
+        cost = cost + math.abs(nibnav.sideLookup.turn[prevFacing][facing])
     end
 
     -- Return the cost to move to this node
